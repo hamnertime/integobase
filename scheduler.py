@@ -1,11 +1,29 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.orm import Session
-from sqlalchemy import text # <-- IMPORT ADDED HERE
+from sqlalchemy import text
 from datetime import datetime
 from .database import SessionLocal
 from .data_pullers import pull_freshservice, pull_datto, pull_ticket_details
 
 scheduler = AsyncIOScheduler()
+
+def run_all_syncs_once():
+    """
+    A synchronous function to run all data pullers once for debugging
+    and initial data population on startup.
+    """
+    print("--- RUNNING INITIAL DATA SYNC ON STARTUP ---")
+    db: Session = SessionLocal()
+    try:
+        pull_freshservice.sync_freshservice_data(db)
+        pull_datto.sync_datto_data(db)
+        pull_ticket_details.sync_ticket_details_data(db)
+    except Exception as e:
+        print(f"!!! An error occurred during initial data sync: {e}")
+    finally:
+        db.close()
+    print("--- INITIAL DATA SYNC FINISHED ---")
+
 
 async def run_freshservice_sync():
     print("SCHEDULER: Running Freshservice sync job...")
@@ -52,7 +70,7 @@ def setup_scheduler():
     """
     db = SessionLocal()
     try:
-        # Wrap the raw SQL string in the text() function
+        # Using text() to mark the string as a SQL expression
         query = text("SELECT * FROM scheduler_jobs WHERE enabled = TRUE")
         jobs = db.execute(query).fetchall()
 

@@ -13,7 +13,7 @@ if __name__ == "__main__" and __package__ is None:
 # --- Key Change: Imports are now ABSOLUTE ---
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from integobase.scheduler import setup_scheduler, scheduler
+from integobase.scheduler import setup_scheduler, scheduler, run_all_syncs_once
 from integobase.api.endpoints import clients, assets, contacts, knowledge_base, settings
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -21,8 +21,15 @@ from fastapi.middleware.cors import CORSMiddleware
 async def lifespan(app: FastAPI):
     # Code to run on startup
     print("Starting up Integobase API server...")
+
+    # Run all data pullers once on startup to get fresh data and see debug output
+    run_all_syncs_once()
+
+    # Now, set up the recurring schedule for future runs
     setup_scheduler()
+
     yield
+
     # Code to run on shutdown
     print("Shutting down scheduler...")
     if scheduler.running:

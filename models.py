@@ -1,10 +1,65 @@
 from sqlalchemy import (
     Boolean, Column, ForeignKey, Integer, String, Float, Text, DateTime,
-    UniqueConstraint
+    UniqueConstraint, BigInteger
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from .database import Base
+
+# --- Application & System Models ---
+
+class AppUser(Base):
+    __tablename__ = "app_users"
+    id = Column(Integer, primary_key=True, index=True)
+    username = Column(String, unique=True, index=True)
+    password_hash = Column(String, nullable=True)
+    role = Column(String, default='Read-Only')
+    force_password_reset = Column(Boolean, default=True)
+
+
+class SchedulerJob(Base):
+    __tablename__ = "scheduler_jobs"
+    id = Column(Integer, primary_key=True, index=True)
+    job_name = Column(String, unique=True)
+    script_path = Column(String)
+    interval_minutes = Column(Integer)
+    enabled = Column(Boolean, default=True)
+    last_run = Column(DateTime, nullable=True)
+    next_run = Column(DateTime, nullable=True)
+    last_status = Column(String, nullable=True)
+    last_run_log = Column(Text, nullable=True)
+
+
+class ApiKey(Base):
+    __tablename__ = "api_keys"
+    service = Column(String, primary_key=True, index=True)
+    api_key = Column(String)
+    api_secret = Column(String, nullable=True)
+    api_endpoint = Column(String, nullable=True)
+
+
+class AppSetting(Base):
+    __tablename__ = "app_settings"
+    key = Column(String, primary_key=True, index=True)
+    value = Column(String)
+
+
+class CustomLink(Base):
+    __tablename__ = "custom_links"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    url = Column(String)
+    link_order = Column(Integer, default=0)
+
+
+class FeatureOption(Base):
+    __tablename__ = "feature_options"
+    id = Column(Integer, primary_key=True, index=True)
+    feature_type = Column(String)
+    option_name = Column(String)
+
+    __table_args__ = (UniqueConstraint('feature_type', 'option_name', name='_feature_option_uc'),)
+
 
 # --- Core Company and Asset Models ---
 
@@ -12,7 +67,7 @@ class Company(Base):
     __tablename__ = "companies"
     account_number = Column(String, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
-    freshservice_id = Column(Integer, unique=True, index=True)
+    freshservice_id = Column(BigInteger, unique=True, index=True) # <-- THIS IS THE FIX
     datto_site_uid = Column(String, unique=True, nullable=True)
     datto_portal_url = Column(String, nullable=True)
     contract_type = Column(String, nullable=True)
@@ -77,7 +132,7 @@ class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
     company_account_number = Column(String, ForeignKey("companies.account_number"))
-    freshservice_id = Column(Integer, unique=True, index=True)
+    freshservice_id = Column(BigInteger, unique=True, index=True) # <-- THIS IS THE FIX
     full_name = Column(String, index=True)
     email = Column(String, unique=True, index=True)
     status = Column(String, default='Active')
@@ -258,61 +313,6 @@ class TicketDetail(Base):
     last_updated_at = Column(DateTime(timezone=True))
     closed_at = Column(DateTime(timezone=True), nullable=True)
     total_hours_spent = Column(Float)
-
-
-# --- Application & System Models ---
-
-class AppUser(Base):
-    __tablename__ = "app_users"
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    password_hash = Column(String, nullable=True)
-    role = Column(String, default='Read-Only')
-    force_password_reset = Column(Boolean, default=True)
-
-
-class SchedulerJob(Base):
-    __tablename__ = "scheduler_jobs"
-    id = Column(Integer, primary_key=True, index=True)
-    job_name = Column(String, unique=True)
-    script_path = Column(String)
-    interval_minutes = Column(Integer)
-    enabled = Column(Boolean, default=True)
-    last_run = Column(DateTime, nullable=True)
-    next_run = Column(DateTime, nullable=True)
-    last_status = Column(String, nullable=True)
-    last_run_log = Column(Text, nullable=True)
-
-
-class APIKey(Base):
-    __tablename__ = "api_keys"
-    service = Column(String, primary_key=True, index=True)
-    api_key = Column(String)
-    api_secret = Column(String, nullable=True)
-    api_endpoint = Column(String, nullable=True)
-
-
-class AppSetting(Base):
-    __tablename__ = "app_settings"
-    key = Column(String, primary_key=True, index=True)
-    value = Column(String)
-
-
-class CustomLink(Base):
-    __tablename__ = "custom_links"
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String)
-    url = Column(String)
-    link_order = Column(Integer, default=0)
-
-
-class FeatureOption(Base):
-    __tablename__ = "feature_options"
-    id = Column(Integer, primary_key=True, index=True)
-    feature_type = Column(String)
-    option_name = Column(String)
-
-    __table_args__ = (UniqueConstraint('feature_type', 'option_name', name='_feature_option_uc'),)
 
 
 # --- Knowledge Base ---

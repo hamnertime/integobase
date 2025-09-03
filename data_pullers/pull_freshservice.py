@@ -165,34 +165,37 @@ def sync_freshservice_data(db: Session):
 
 
     # 4. Perform bulk upserts
-    with db.begin():
-        if companies_to_upsert:
-            print(f"\nUpserting {len(companies_to_upsert)} companies...")
-            stmt = insert(models.Company).values(companies_to_upsert)
-            update_cols = {c.name: c for c in stmt.excluded if c.name not in ['account_number']}
-            stmt = stmt.on_conflict_do_update(index_elements=['account_number'], set_=update_cols)
-            db.execute(stmt)
+    # --- THIS IS THE FIX ---
+    # The with db.begin() context manager is removed.
+    if companies_to_upsert:
+        print(f"\nUpserting {len(companies_to_upsert)} companies...")
+        stmt = insert(models.Company).values(companies_to_upsert)
+        update_cols = {c.name: c for c in stmt.excluded if c.name not in ['account_number']}
+        stmt = stmt.on_conflict_do_update(index_elements=['account_number'], set_=update_cols)
+        db.execute(stmt)
 
-        if locations_to_upsert:
-            print(f"Upserting {len(locations_to_upsert)} locations...")
-            stmt = insert(models.ClientLocation).values(locations_to_upsert)
-            update_cols = {c.name: c for c in stmt.excluded if c.name not in ['id']}
-            stmt = stmt.on_conflict_do_update(index_elements=['company_account_number', 'location_name'], set_=update_cols)
-            db.execute(stmt)
+    if locations_to_upsert:
+        print(f"Upserting {len(locations_to_upsert)} locations...")
+        stmt = insert(models.ClientLocation).values(locations_to_upsert)
+        update_cols = {c.name: c for c in stmt.excluded if c.name not in ['id']}
+        stmt = stmt.on_conflict_do_update(index_elements=['company_account_number', 'location_name'], set_=update_cols)
+        db.execute(stmt)
 
-        if users_to_upsert:
-            print(f"Upserting {len(users_to_upsert)} users...")
-            stmt = insert(models.User).values(users_to_upsert)
-            update_cols = {c.name: c for c in stmt.excluded if c.name not in ['id', 'freshservice_id']}
-            stmt = stmt.on_conflict_do_update(index_elements=['freshservice_id'], set_=update_cols)
-            db.execute(stmt)
+    if users_to_upsert:
+        print(f"Upserting {len(users_to_upsert)} users...")
+        stmt = insert(models.User).values(users_to_upsert)
+        update_cols = {c.name: c for c in stmt.excluded if c.name not in ['id', 'freshservice_id']}
+        stmt = stmt.on_conflict_do_update(index_elements=['freshservice_id'], set_=update_cols)
+        db.execute(stmt)
 
-        if contacts_to_upsert:
-            print(f"Upserting {len(contacts_to_upsert)} contacts...")
-            stmt = insert(models.Contact).values(contacts_to_upsert)
-            update_cols = {c.name: c for c in stmt.excluded if c.name not in ['id', 'email']}
-            stmt = stmt.on_conflict_do_update(index_elements=['email'], set_=update_cols)
-            db.execute(stmt)
+    if contacts_to_upsert:
+        print(f"Upserting {len(contacts_to_upsert)} contacts...")
+        stmt = insert(models.Contact).values(contacts_to_upsert)
+        update_cols = {c.name: c for c in stmt.excluded if c.name not in ['id', 'email']}
+        stmt = stmt.on_conflict_do_update(index_elements=['email'], set_=update_cols)
+        db.execute(stmt)
+
+    db.commit() # Commit all changes at the end of the function.
+    # --- END OF FIX ---
 
     print("--- Freshservice Data Sync Finished ---")
-
