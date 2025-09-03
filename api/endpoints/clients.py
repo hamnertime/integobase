@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from ... import models, schemas
+from ... import models, schemas, billing
 from ...database import get_db
 
 router = APIRouter()
@@ -36,6 +36,24 @@ def create_client(client: schemas.CompanyCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(db_client)
     return db_client
+
+@router.get("/dashboard", response_model=List[schemas.ClientDashboard])
+def get_dashboard_data(db: Session = Depends(get_db)):
+    """
+    An optimized endpoint to calculate and return data for the main billing dashboard.
+    """
+    return billing.get_billing_dashboard_data(db)
+
+
+@router.get("/{account_number}/billing-details", response_model=schemas.ClientBillingDetails)
+def get_client_billing_details(account_number: str, year: int, month: int, db: Session = Depends(get_db)):
+    """
+    A comprehensive function to fetch all data and calculate billing details for a specific client and period.
+    """
+    details = billing.get_billing_data_for_client(db, account_number, year, month)
+    if not details:
+        raise HTTPException(status_code=404, detail="Client not found or billing plan is unconfigured.")
+    return details
 
 @router.get("/{account_number}", response_model=schemas.Company)
 def read_client(account_number: str, db: Session = Depends(get_db)):
@@ -76,4 +94,3 @@ def delete_client(account_number: str, db: Session = Depends(get_db)):
     db.delete(db_client)
     db.commit()
     return {"ok": True}
-
