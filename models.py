@@ -345,3 +345,12 @@ class KBArticleCategoryLink(Base):
     __tablename__ = 'kb_article_category_link'
     article_id = Column(Integer, ForeignKey('kb_articles.id'), primary_key=True)
     category_id = Column(Integer, ForeignKey('kb_categories.id'), primary_key=True)
+
+class UserWidgetLayout(Base):
+    __tablename__ = "user_widget_layouts"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("app_users.id"), nullable=False)
+    page_name = Column(String, nullable=False)
+    layout = Column(Text, nullable=False) # Stored as a JSON string
+
+    __table_args__ = (UniqueConstraint('user_id', 'page_name', name='_user_page_layout_uc'),)
