@@ -2,7 +2,7 @@ from pydantic import BaseModel, EmailStr
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-# --- Base Schemas ---
+# --- Base Schemas (for creation/updates) ---
 
 class CompanyBase(BaseModel):
     account_number: str
@@ -65,11 +65,11 @@ class KBArticleBase(BaseModel):
 class KBArticleCreate(KBArticleBase):
     category_ids: List[int] = []
 
-class AppSettingBase(BaseModel):
-    key: str
-    value: str
+class BillingNoteBase(BaseModel):
+    note_content: str
+    author: Optional[str] = None
 
-class AppSettingCreate(AppSettingBase):
+class BillingNoteCreate(BillingNoteBase):
     pass
 
 class AppUserBase(BaseModel):
@@ -77,34 +77,20 @@ class AppUserBase(BaseModel):
     role: str
 
 class AppUserCreate(AppUserBase):
-    password: str
+    password: Optional[str] = None # Password is not required on creation
 
-class BillingPlanBase(BaseModel):
-    billing_plan: str
-    term_length: str
-    support_level: str
-    per_user_cost: float
-    per_workstation_cost: float
-    per_server_cost: float
-    # Add other cost fields as necessary
+class AppUserUpdate(AppUserBase):
+    new_password: Optional[str] = None # For setting/resetting password
 
-class BillingPlanCreate(BillingPlanBase):
-    pass
+class FeatureOptionCreate(BaseModel):
+    feature_type: str
+    option_name: str
 
-class BillingPlanUpdate(BillingPlanBase):
-    pass
-
-class SchedulerJobBase(BaseModel):
-    job_name: str
-    script_path: str
-    interval_minutes: int
-    enabled: bool
-
-class SchedulerJobUpdate(SchedulerJobBase):
-    pass
+class FeatureTypeCreate(BaseModel):
+    feature_type: str
 
 
-# --- Response Schemas ---
+# --- Response Schemas (for reading data from the API) ---
 
 class Contact(ContactBase):
     id: int
@@ -128,6 +114,7 @@ class KBCategory(KBCategoryBase):
 
 class AppUser(AppUserBase):
     id: int
+    force_password_reset: bool
     class Config:
         from_attributes = True
 
@@ -136,8 +123,9 @@ class KBArticle(KBArticleBase):
     author_id: int
     created_at: datetime
     updated_at: datetime
-    categories: List[KBCategory] = []
     author: AppUser
+    company: Optional[CompanyBase] = None
+    categories: List[KBCategory] = []
     class Config:
         from_attributes = True
 
@@ -147,7 +135,22 @@ class Company(CompanyBase):
     class Config:
         from_attributes = True
 
-# --- API-Specific Schemas for Refactored Integodash ---
+class BillingNote(BillingNoteBase):
+    id: int
+    created_at: datetime
+    company_account_number: str
+    class Config:
+        from_attributes = True
+
+class ClientAttachment(BaseModel):
+    id: int
+    original_filename: str
+    stored_filename: str
+    uploaded_at: datetime
+    file_size: int
+    category: str
+    class Config:
+        from_attributes = True
 
 class ClientDashboard(BaseModel):
     account_number: str
@@ -166,29 +169,64 @@ class ClientDashboard(BaseModel):
 
 class ReceiptData(BaseModel):
     total: float
-    # ... other receipt fields will be added here
+    total_user_charges: float
+    total_asset_charges: float
+    total_line_item_charges: float
+    ticket_charge: float
+    backup_charge: float
+    billed_users: List[Dict[str, Any]]
+    billed_assets: List[Dict[str, Any]]
+    billed_line_items: List[Dict[str, Any]]
+    hours_for_billing_period: float
+    prepaid_hours_monthly: float
+    billable_hours: float
+    backup_base_workstation: float
+    backup_base_server: float
+    total_included_tb: float
+    overage_tb: float
+    overage_charge: float
 
 class ClientBillingDetails(BaseModel):
     client: Company
     receipt_data: ReceiptData
     quantities: Dict[str, int]
     effective_rates: Dict[str, Any]
+    locations: List[Dict[str, Any]]
+    assets: List[Asset]
+    manual_assets: List[Dict[str, Any]]
+    users: List[Dict[str, Any]]
+    manual_users: List[Dict[str, Any]]
+    custom_line_items: List[Dict[str, Any]]
+    tickets_for_billing_period: List[Dict[str, Any]]
+    support_level_display: str
+    contract_end_date: str
+    contract_expired: bool
+    datto_portal_url: Optional[str] = None
     class Config:
         from_attributes = True
 
-# --- Schemas for settings page ---
-class AppSetting(AppSettingBase):
+class BillingPlan(BaseModel):
+    billing_plan: str
     class Config:
         from_attributes = True
 
-class BillingPlan(BillingPlanBase):
+class SchedulerJob(BaseModel):
     id: int
-    class Config:
-        from_attributes = True
-
-class SchedulerJob(SchedulerJobBase):
-    id: int
+    job_name: str
+    script_path: str
+    interval_minutes: int
+    enabled: bool
     last_run: Optional[datetime] = None
     last_status: Optional[str] = None
+    class Config:
+        from_attributes = True
+
+class SchedulerLog(BaseModel):
+    log: str
+
+class FeatureOption(BaseModel):
+    id: int
+    feature_type: str
+    option_name: str
     class Config:
         from_attributes = True

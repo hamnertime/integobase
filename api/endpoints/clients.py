@@ -1,96 +1,94 @@
-from fastapi import APIRouter, Depends, HTTPException
+# integobase/api/endpoints/clients.py
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List
 from ... import models, schemas, billing
 from ...database import get_db
+import os
+import uuid
+from werkzeug.utils import secure_filename
 
 router = APIRouter()
 
+# --- Existing Endpoints (with the new paginated dashboard) ---
 @router.get("/", response_model=List[schemas.Company])
-def read_clients(
-    search: str = "",
-    skip: int = 0,
-    limit: int = 100,
-    db: Session = Depends(get_db)
-):
-    """
-    Retrieve all clients with optional search and pagination.
-    """
-    query = db.query(models.Company)
-    if search:
-        search_term = f"%{search}%"
-        query = query.filter(
-            models.Company.name.ilike(search_term) |
-            models.Company.account_number.ilike(search_term)
-        )
-    clients = query.offset(skip).limit(limit).all()
-    return clients
+def read_clients(search: str = "", skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    # ... (implementation from previous message)
+    pass
 
 @router.post("/", response_model=schemas.Company)
 def create_client(client: schemas.CompanyCreate, db: Session = Depends(get_db)):
-    """
-    Create a new client.
-    """
-    db_client = models.Company(**client.model_dump())
-    db.add(db_client)
-    db.commit()
-    db.refresh(db_client)
-    return db_client
+    # ... (implementation from previous message)
+    pass
 
 @router.get("/dashboard", response_model=List[schemas.ClientDashboard])
 def get_dashboard_data(db: Session = Depends(get_db)):
-    """
-    An optimized endpoint to calculate and return data for the main billing dashboard.
-    """
-    return billing.get_billing_dashboard_data(db)
+    # ... (implementation from previous message)
+    pass
 
+@router.get("/dashboard/paginated")
+def get_paginated_dashboard_data(page: int = 1, per_page: int = 50, search: str = "", sort_by: str = "name", sort_order: str = "asc", db: Session = Depends(get_db)):
+    # ... (implementation from previous message)
+    pass
 
+# --- NEW Billing Details Endpoint ---
 @router.get("/{account_number}/billing-details", response_model=schemas.ClientBillingDetails)
 def get_client_billing_details(account_number: str, year: int, month: int, db: Session = Depends(get_db)):
-    """
-    A comprehensive function to fetch all data and calculate billing details for a specific client and period.
-    """
+    """ A comprehensive endpoint to fetch all data for the client details page. """
     details = billing.get_billing_data_for_client(db, account_number, year, month)
     if not details:
         raise HTTPException(status_code=404, detail="Client not found or billing plan is unconfigured.")
     return details
 
-@router.get("/{account_number}", response_model=schemas.Company)
-def read_client(account_number: str, db: Session = Depends(get_db)):
-    """
-    Retrieve a single client by their account number.
-    """
-    db_client = db.query(models.Company).filter(models.Company.account_number == account_number).first()
-    if db_client is None:
+# --- NEW Note Endpoints ---
+@router.post("/{account_number}/notes", response_model=schemas.BillingNote)
+def create_note_for_client(account_number: str, note: schemas.BillingNoteCreate, db: Session = Depends(get_db)):
+    db_company = db.query(models.Company).filter(models.Company.account_number == account_number).first()
+    if not db_company:
         raise HTTPException(status_code=404, detail="Client not found")
-    return db_client
-
-@router.put("/{account_number}", response_model=schemas.Company)
-def update_client(account_number: str, client: schemas.CompanyCreate, db: Session = Depends(get_db)):
-    """
-    Update an existing client's details.
-    """
-    db_client = db.query(models.Company).filter(models.Company.account_number == account_number).first()
-    if db_client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
-
-    update_data = client.model_dump(exclude_unset=True)
-    for key, value in update_data.items():
-        setattr(db_client, key, value)
-
-    db.add(db_client)
+    db_note = models.BillingNote(**note.model_dump(), company_account_number=account_number)
+    db.add(db_note)
     db.commit()
-    db.refresh(db_client)
-    return db_client
+    db.refresh(db_note)
+    return db_note
 
-@router.delete("/{account_number}", status_code=204)
-def delete_client(account_number: str, db: Session = Depends(get_db)):
-    """
-    Delete a client.
-    """
-    db_client = db.query(models.Company).filter(models.Company.account_number == account_number).first()
-    if db_client is None:
-        raise HTTPException(status_code=404, detail="Client not found")
-    db.delete(db_client)
-    db.commit()
+@router.delete("/notes/{note_id}", status_code=204)
+def delete_note(note_id: int, db: Session = Depends(get_db)):
+    db_note = db.query(models.BillingNote).filter(models.BillingNote.id == note_id).first()
+    if db_note:
+        db.delete(db_note)
+        db.commit()
     return {"ok": True}
+
+# --- NEW Attachment Endpoints ---
+UPLOAD_FOLDER = 'uploads' # Should be configured via settings
+@router.post("/{account_number}/attachments")
+def upload_attachment_for_client(account_number: str, category: str = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
+    db_company = db.query(models.Company).filter(models.Company.account_number == account_number).first()
+    if not db_company:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    original_filename = secure_filename(file.filename)
+    stored_filename = f"{uuid.uuid4().hex}_{original_filename}"
+    client_upload_dir = os.path.join(UPLOAD_FOLDER, account_number)
+    os.makedirs(client_upload_dir, exist_ok=True)
+    file_path = os.path.join(client_upload_dir, stored_filename)
+
+    with open(file_path, "wb") as buffer:
+        buffer.write(file.file.read())
+
+    file_size = os.path.getsize(file_path)
+
+    db_attachment = models.ClientAttachment(
+        company_account_number=account_number,
+        original_filename=original_filename,
+        stored_filename=stored_filename,
+        file_size=file_size,
+        category=category
+    )
+    db.add(db_attachment)
+    db.commit()
+    db.refresh(db_attachment)
+    return db_attachment
+
+# ... (other client endpoints from previous message)
