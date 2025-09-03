@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 import json
+from werkzeug.security import generate_password_hash
 from ... import models, schemas
 from ...database import get_db
 from ...scheduler import trigger_job_run
@@ -130,15 +131,19 @@ def create_user(user: schemas.AppUserCreate, db: Session = Depends(get_db)):
     """
     Create a new application user.
     """
-    # Note: Password hashing should be handled here
-    db_user = models.AppUser(**user.model_dump())
+    hashed_password = generate_password_hash(user.password)
+    db_user = models.AppUser(
+        username=user.username,
+        role=user.role,
+        password_hash=hashed_password
+    )
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
 
 @router.put("/users/{user_id}", response_model=schemas.AppUser)
-def update_user(user_id: int, user: schemas.AppUserUpdate, db: Session = Depends(get_db)):
+def update_user(user_id: int, user: schemas.AppUserCreate, db: Session = Depends(get_db)):
     """
     Update an application user's details (role, etc.).
     """
@@ -147,7 +152,10 @@ def update_user(user_id: int, user: schemas.AppUserUpdate, db: Session = Depends
         raise HTTPException(status_code=404, detail="User not found")
 
     update_data = user.model_dump(exclude_unset=True)
-    # Note: Password updates would require special handling
+    # Exclude password from general updates; should be handled separately
+    if 'password' in update_data:
+        del update_data['password']
+
     for key, value in update_data.items():
         setattr(db_user, key, value)
 
@@ -174,18 +182,21 @@ def export_all_settings(db: Session = Depends(get_db)):
     Export all settings and data from the database into a single JSON object.
     """
     export_data = {}
+    # This list is speculative and needs to match actual models/schemas
     tables_to_export = [
-        "companies", "client_locations", "app_users", "billing_plans",
-        "feature_options", "custom_links", "client_billing_overrides",
-        "asset_billing_overrides", "user_billing_overrides",
-        "manual_assets", "manual_users", "billing_notes",
-        "client_attachments", "custom_line_items"
+        "Company", "ClientLocation", "AppUser", "BillingPlan",
+        "FeatureOption", "CustomLink"
+        # Add other models as needed, ensuring they have corresponding Pydantic schemas
     ]
 
-    for table_name in tables_to_export:
-        model = getattr(models, ''.join(word.capitalize() for word in table_name.split('_')))
-        records = db.query(model).all()
-        export_data[table_name] = [schemas.model_validate(rec).model_dump() for rec in records]
+    for model_name in tables_to_export:
+        try:
+            model = getattr(models, model_name)
+            schema = getattr(schemas, model_name)
+            records = db.query(model).all()
+            export_data[model_name.lower() + 's'] = [schema.from_orm(rec).dict() for rec in records]
+        except AttributeError:
+            print(f"Warning: Could not export table for model {model_name}. Model or Schema not found.")
 
     return export_data
 
@@ -200,27 +211,26 @@ async def import_all_settings(file: UploadFile = File(...), db: Session = Depend
     contents = await file.read()
     import_data = json.loads(contents)
 
-    # A more robust implementation would validate the schema of the imported data
-    # and handle transactions carefully.
-
+    # This is a simplified import and should be made more robust
     # Process in a safe order to respect foreign keys
     tables_to_import = [
-        "companies", "client_locations", "app_users", "billing_plans",
-        "feature_options", "custom_links", "client_billing_overrides",
-        "asset_billing_overrides", "user_billing_overrides",
-        "manual_assets", "manual_users", "billing_notes",
-        "client_attachments", "custom_line_items"
+        "BillingPlan", "AppUser", "Company", "ClientLocation"
     ]
 
     try:
         with db.begin():
-            for table_name in tables_to_import:
-                if table_name in import_data:
-                    model = getattr(models, ''.join(word.capitalize() for word in table_name.split('_')))
-                    db.query(model).delete() # Clear existing data
-                    for record in import_data[table_name]:
+            for model_name in reversed(tables_to_import): # Delete in reverse order
+                 if (model_name.lower() + 's') in import_data:
+                    model = getattr(models, model_name)
+                    db.query(model).delete()
+
+            for model_name in tables_to_import:
+                table_key = model_name.lower() + 's'
+                if table_key in import_data:
+                    model = getattr(models, model_name)
+                    for record in import_data[table_key]:
                         db.add(model(**record))
         return {"message": "Settings imported successfully."}
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"An error occurred during import: {str(e)}")
-

@@ -1,7 +1,20 @@
+#!/usr/bin/env python
+
+import sys
+import os
+import uvicorn
+
+# This block is still necessary. It allows Python to find the "integobase" package.
+if __name__ == "__main__" and __package__ is None:
+    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    sys.path.insert(0, parent_dir)
+
+
+# --- Key Change: Imports are now ABSOLUTE ---
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from .scheduler import setup_scheduler, scheduler
-from .api.endpoints import clients, assets, contacts, knowledge_base, settings
+from integobase.scheduler import setup_scheduler, scheduler
+from integobase.api.endpoints import clients, assets, contacts, knowledge_base, settings
 from fastapi.middleware.cors import CORSMiddleware
 
 @asynccontextmanager
@@ -45,3 +58,7 @@ app.include_router(settings.router, prefix="/api/v1/settings", tags=["Settings"]
 async def read_root():
     return {"message": "Welcome to the Integobase API"}
 
+
+# This block remains the same.
+if __name__ == "__main__":
+    uvicorn.run("integobase.main:app", host="127.0.0.1", port=8000, reload=True)

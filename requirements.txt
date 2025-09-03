@@ -9,3 +9,5 @@ werkzeug
 requests
 markdown
 bleach
+pydantic_settings
+python-multipart

@@ -101,6 +101,7 @@ Since you're comfortable with Linux, these are the typical steps for a new insta
     
     -- Grant all privileges on the new database to the new user
     GRANT ALL PRIVILEGES ON DATABASE integobase_db TO integobash_user;
+    ALTER DATABASE integobase_db OWNER TO integobash_user;
     
     -- Exit the psql prompt
     \q
@@ -159,6 +160,8 @@ Since you're comfortable with Linux, these are the typical steps for a new insta
         CREATE USER integobash_user WITH PASSWORD 'your_secure_password';
         CREATE DATABASE integobase_db;
         GRANT ALL PRIVILEGES ON DATABASE integobase_db TO integobash_user;
+        ALTER DATABASE integobase_db OWNER TO integobash_user;
+
         \q
         
         ```

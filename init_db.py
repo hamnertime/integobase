@@ -8,9 +8,9 @@ from werkzeug.security import generate_password_hash
 # Add project root to path to allow sibling imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database import engine, Base, SessionLocal
-from models import BillingPlan, ClientBillingOverride # Import models to ensure they are registered
-from config import settings # To access env vars if needed
+from integobase.database import engine, Base, SessionLocal
+from integobase.models import BillingPlan, ClientBillingOverride # Import models to ensure they are registered
+from integobase.config import settings # To access env vars if needed
 
 def get_config_json():
     """
@@ -18,7 +18,7 @@ def get_config_json():
     Looks for `config.override.json` first, then `config.json`.
     """
     config_override_path = os.path.join(os.path.dirname(__file__), '..', 'config.override.json')
-    config_path = os.path.join(os.path.dirname(__file__), '..', 'config.json')
+    config_path = os.path.join(os.path.dirname(__file__), 'config.json')
 
     if os.path.exists(config_override_path):
         print(f"Using custom configuration from 'config.override.json'.")
