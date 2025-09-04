@@ -3,16 +3,24 @@
 import sys
 import os
 import uvicorn
-
-# This block is still necessary. It allows Python to find the "integobase" package.
-if __name__ == "__main__" and __package__ is None:
-    parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    sys.path.insert(0, parent_dir)
-
-
-# --- Key Change: Imports are now ABSOLUTE ---
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
+
+# This block is essential for making the script runnable directly.
+# It ensures Python can find the 'integobase' package by
+# correctly manipulating the system path.
+if __name__ == "__main__" and __package__ is None:
+    # Get the parent directory (the root of the project, 'integobase/')
+    parent_dir = os.path.dirname(os.path.abspath(__file__))
+    # Remove the current directory from the path if it exists to prevent
+    # Python from looking for 'integobase' inside itself.
+    if parent_dir in sys.path:
+        sys.path.remove(parent_dir)
+    # Add the project root to the path so Python can find 'integobase.scheduler', etc.
+    sys.path.insert(0, os.path.dirname(parent_dir))
+
+
+# --- Imports are now ABSOLUTE and work when run with `./main.py` ---
 from integobase.scheduler import setup_scheduler, scheduler, run_all_syncs_once
 from integobase.api.endpoints import clients, assets, contacts, knowledge_base, settings
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +31,8 @@ async def lifespan(app: FastAPI):
     print("Starting up Integobase API server...")
 
     # Run all data pullers once on startup to get fresh data and see debug output
-    run_all_syncs_once()
+    # FIX: Add 'await' to properly run the coroutine
+    await run_all_syncs_once()
 
     # Now, set up the recurring schedule for future runs
     setup_scheduler()

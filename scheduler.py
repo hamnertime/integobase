@@ -1,3 +1,4 @@
+import asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -7,17 +8,18 @@ from .data_pullers import pull_freshservice, pull_datto, pull_ticket_details
 
 scheduler = AsyncIOScheduler()
 
-def run_all_syncs_once():
+async def run_all_syncs_once():
     """
-    A synchronous function to run all data pullers once for debugging
-    and initial data population on startup.
+    An async function to run all data pullers once for debugging
+    and initial data population on startup. It now uses asyncio.to_thread
+    to prevent blocking the main event loop.
     """
     print("--- RUNNING INITIAL DATA SYNC ON STARTUP ---")
     db: Session = SessionLocal()
     try:
-        pull_freshservice.sync_freshservice_data(db)
-        pull_datto.sync_datto_data(db)
-        pull_ticket_details.sync_ticket_details_data(db)
+        await asyncio.to_thread(pull_freshservice.sync_freshservice_data, db)
+        await asyncio.to_thread(pull_datto.sync_datto_data, db)
+        await asyncio.to_thread(pull_ticket_details.sync_ticket_details_data, db)
     except Exception as e:
         print(f"!!! An error occurred during initial data sync: {e}")
     finally:
@@ -29,9 +31,8 @@ async def run_freshservice_sync():
     print("SCHEDULER: Running Freshservice sync job...")
     db: Session = SessionLocal()
     try:
-        # Note: These sync functions are not async, so they will block.
-        # Consider running them in a threadpool for a truly async app.
-        pull_freshservice.sync_freshservice_data(db)
+        # The sync function is synchronous, so run it in a thread.
+        await asyncio.to_thread(pull_freshservice.sync_freshservice_data, db)
     finally:
         db.close()
     print("SCHEDULER: Freshservice sync job finished.")
@@ -40,7 +41,8 @@ async def run_datto_sync():
     print("SCHEDULER: Running Datto RMM sync job...")
     db: Session = SessionLocal()
     try:
-        pull_datto.sync_datto_data(db)
+        # The sync function is synchronous, so run it in a thread.
+        await asyncio.to_thread(pull_datto.sync_datto_data, db)
     finally:
         db.close()
     print("SCHEDULER: Datto RMM sync job finished.")
@@ -49,7 +51,8 @@ async def run_tickets_sync():
     print("SCHEDULER: Running Ticket Details sync job...")
     db: Session = SessionLocal()
     try:
-        pull_ticket_details.sync_ticket_details_data(db)
+        # The sync function is synchronous, so run it in a thread.
+        await asyncio.to_thread(pull_ticket_details.sync_ticket_details_data, db)
     finally:
         db.close()
     print("SCHEDULER: Ticket Details sync job finished.")
