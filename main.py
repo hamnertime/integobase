@@ -31,7 +31,6 @@ async def lifespan(app: FastAPI):
     print("Starting up Integobase API server...")
 
     # Run all data pullers once on startup to get fresh data and see debug output
-    # FIX: Add 'await' to properly run the coroutine
     await run_all_syncs_once()
 
     # Now, set up the recurring schedule for future runs

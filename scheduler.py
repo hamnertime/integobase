@@ -11,20 +11,32 @@ scheduler = AsyncIOScheduler()
 async def run_all_syncs_once():
     """
     An async function to run all data pullers once for debugging
-    and initial data population on startup. It now uses asyncio.to_thread
-    to prevent blocking the main event loop.
+    and initial data population on startup. It now uses asyncio.create_task
+    to launch the syncs as non-blocking background tasks.
     """
-    print("--- RUNNING INITIAL DATA SYNC ON STARTUP ---")
-    db: Session = SessionLocal()
-    try:
-        await asyncio.to_thread(pull_freshservice.sync_freshservice_data, db)
-        await asyncio.to_thread(pull_datto.sync_datto_data, db)
-        await asyncio.to_thread(pull_ticket_details.sync_ticket_details_data, db)
-    except Exception as e:
-        print(f"!!! An error occurred during initial data sync: {e}")
-    finally:
-        db.close()
-    print("--- INITIAL DATA SYNC FINISHED ---")
+    print("--- LAUNCHING INITIAL DATA SYNC ON STARTUP (NON-BLOCKING) ---")
+
+    async def sync_task(sync_function):
+        """Wrapper to manage the database session for each concurrent task."""
+        db: Session = SessionLocal()
+        try:
+            # Run the synchronous DB-heavy function in a separate thread
+            await asyncio.to_thread(sync_function, db)
+            print(f"--- Initial sync for {sync_function.__module__} completed successfully. ---")
+        except Exception as e:
+            print(f"!!! An error occurred during initial background sync for {sync_function.__module__}: {e}")
+        finally:
+            db.close()
+
+    # Create and start a background task for each data puller
+    tasks = [
+        asyncio.create_task(sync_task(pull_freshservice.sync_freshservice_data)),
+        asyncio.create_task(sync_task(pull_datto.sync_datto_data)),
+        asyncio.create_task(sync_task(pull_ticket_details.sync_ticket_details_data))
+    ]
+
+    print(f"--- {len(tasks)} sync tasks are running in the background. API is ready. ---")
+    # The tasks will continue to run to completion in the background
 
 
 async def run_freshservice_sync():
