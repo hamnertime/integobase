@@ -89,6 +89,15 @@ class FeatureOptionCreate(BaseModel):
 class FeatureTypeCreate(BaseModel):
     feature_type: str
 
+class CustomLinkBase(BaseModel):
+    name: str
+    url: str
+    link_order: int = 0
+
+class CustomLink(CustomLinkBase):
+    id: int
+    class Config:
+        from_attributes = True
 
 # --- Response Schemas (for reading data from the API) ---
 

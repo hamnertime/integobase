@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from typing import List, Dict, Any
 import json
 import re
@@ -9,6 +9,9 @@ from ...database import get_db, engine
 from ...scheduler import trigger_job_run
 from fastapi.security import OAuth2PasswordRequestForm
 from datetime import timedelta
+from sqlalchemy import text
+from collections import defaultdict
+import os
 
 router = APIRouter()
 
@@ -30,7 +33,41 @@ default_widget_layouts = {
         {"w": 12, "h": 3, "id": "tracked-assets-widget"},
         {"w": 12, "h": 3, "id": "ticket-breakdown-widget"}
     ],
-    # Add other pages' default layouts here as they are refactored
+    "kb": [
+        {"x": 0, "y": 0, "w": 12, "h": 8, "id": "kb-articles-table-widget"}
+    ],
+    "contacts": [
+        {"x": 0, "y": 0, "w": 12, "h": 8, "id": "contacts-table-widget"}
+    ],
+    "contact_details": [
+        {"x": 0, "y": 0, "w": 7, "h": 6, "id": "contact-info-widget"},
+        {"x": 7, "y": 0, "w": 5, "h": 6, "id": "associated-assets-widget"},
+        {"x": 0, "y": 6, "w": 12, "h": 4, "id": "contact-notes-widget"}
+    ],
+    "assets": [
+        {"x": 0, "y": 0, "w": 12, "h": 8, "id": "assets-table-widget"}
+    ],
+    "client_settings": [
+        {"w": 6, "h": 5, "id": "client-details-widget", "x": 0, "y": 0},
+        {"x": 6, "w": 6, "h": 5, "id": "contract-details-widget", "y": 0},
+        {"y": 5, "w": 12, "h": 4, "id": "locations-settings-widget", "x": 0},
+        {"y": 9, "w": 12, "h": 7, "id": "billing-overrides-widget", "x": 0},
+        {"y": 16, "w": 12, "h": 4, "id": "feature-overrides-widget", "x": 0},
+        {"y": 20, "w": 12, "h": 4, "id": "custom-line-items-widget", "x": 0},
+        {"x": 0, "y": 24, "w": 6, "h": 4, "id": "add-manual-user-widget"},
+        {"y": 24, "w": 6, "h": 4, "id": "add-manual-asset-widget", "x": 6},
+        {"y": 28, "w": 12, "h": 3, "id": "user-overrides-widget", "x": 0},
+        {"y": 31, "w": 12, "h": 4, "id": "asset-overrides-widget", "x": 0}
+    ],
+    "settings": [
+        {"w": 12, "h": 2, "id": "import-export-widget", "x": 0, "y": 0},
+        {"x": 0, "w": 12, "h": 4, "id": "scheduler-widget", "y": 2},
+        {"y": 6, "w": 12, "h": 7, "id": "users-auditing-widget", "x": 0},
+        {"y": 13, "w": 12, "h": 4, "id": "password-reset-widget", "x": 0},
+        {"y": 17, "w": 12, "h": 3, "id": "custom-links-widget", "x": 0},
+        {"y": 20, "w": 12, "h": 8, "id": "billing-plans-widget", "x": 0},
+        {"x": 0, "y": 28, "w": 12, "h": 8, "id": "feature-options-widget"}
+    ],
 }
 
 def sanitize_column_name(name: str) -> str:
@@ -58,8 +95,32 @@ def get_user_layout(user_id: int, page_name: str, db: Session = Depends(get_db))
         raise HTTPException(status_code=404, detail="Layout for this page not found.")
     return default_widget_layouts[page_name]
 
+@router.post("/layouts/{user_id}/{page_name}")
+def save_user_layout(user_id: int, page_name: str, payload: dict, db: Session = Depends(get_db)):
+    layout = payload.get('layout')
+    if not layout:
+        raise HTTPException(status_code=400, detail="Layout data is required.")
+
+    db_layout = db.query(models.UserWidgetLayout).filter_by(user_id=user_id, page_name=page_name).first()
+    if db_layout:
+        db_layout.layout = layout
+    else:
+        db_layout = models.UserWidgetLayout(user_id=user_id, page_name=page_name, layout=layout)
+        db.add(db_layout)
+    db.commit()
+    return {"status": "success"}
+
+@router.delete("/layouts/{user_id}/{page_name}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_user_layout(user_id: int, page_name: str, db: Session = Depends(get_db)):
+    db_layout = db.query(models.UserWidgetLayout).filter_by(user_id=user_id, page_name=page_name).first()
+    if db_layout:
+        db.delete(db_layout)
+        db.commit()
+    return {"status": "success"}
+
+
 # --- User Authentication & Management ---
-@router.post("/users/login") # <-- THIS IS THE FIX (trailing slash removed)
+@router.post("/users/login", tags=["Auth"])
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.query(models.AppUser).filter(models.AppUser.username == form_data.username).first()
     if not user or not user.password_hash or not check_password_hash(user.password_hash, form_data.password):
@@ -164,3 +225,38 @@ def add_feature_type(feature_type_in: schemas.FeatureTypeCreate, db: Session = D
     db.add(db_option)
     db.commit()
     return {"message": "Feature category created successfully"}
+
+# --- Custom Links Endpoints (Added to fix 404) ---
+@router.get("/links/", response_model=List[schemas.CustomLink])
+def get_custom_links(db: Session = Depends(get_db)):
+    return db.query(models.CustomLink).order_by(models.CustomLink.link_order).all()
+
+@router.post("/links/", response_model=schemas.CustomLink, status_code=status.HTTP_201_CREATED)
+def add_custom_link(link_in: schemas.CustomLinkBase, db: Session = Depends(get_db)):
+    db_link = models.CustomLink(**link_in.model_dump())
+    db.add(db_link)
+    db.commit()
+    db.refresh(db_link)
+    return db_link
+
+@router.delete("/links/{link_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_custom_link(link_id: int, db: Session = Depends(get_db)):
+    db_link = db.query(models.CustomLink).filter(models.CustomLink.id == link_id).first()
+    if not db_link:
+        raise HTTPException(status_code=404, detail="Link not found")
+    db.delete(db_link)
+    db.commit()
+    return {"ok": True}
+
+@router.put("/links/{link_id}", response_model=schemas.CustomLink)
+def update_custom_link(link_id: int, link_in: schemas.CustomLinkBase, db: Session = Depends(get_db)):
+    db_link = db.query(models.CustomLink).filter(models.CustomLink.id == link_id).first()
+    if not db_link:
+        raise HTTPException(status_code=404, detail="Link not found")
+
+    update_data = link_in.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_link, key, value)
+    db.commit()
+    db.refresh(db_link)
+    return db_link
